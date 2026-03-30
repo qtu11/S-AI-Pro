@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="QtusScreen AI Pro v5.0 — Professional AI Computer Agent Dashboard">
+  <title>QtusScreen AI Pro v5.0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ═══ HEADER ═══ -->
+  <header class="header" id="header">
+    <div class="header-left">
+      <div class="header-brand">
+        <div class="header-logo-wrap">
+          <span class="header-logo">🤖</span>
+          <span class="header-logo-pulse"></span>
+        </div>
+        <div class="header-title-group">
+          <span class="header-title">QtusScreen AI Pro</span>
+          <span class="header-version">v5.0</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div id="connectionStatus" class="connection-badge disconnected">
+        <span class="connection-dot"></span>
+        <span id="connectionText">Đang kết nối...</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="header-btn" onclick="App.captureScreen()" title="Chụp màn hình (F5)">
+        <span>📸</span>
+      </button>
+      <button class="header-btn" onclick="App.toggleTheme()" title="Đổi theme">
+        <span id="themeIcon">🌙</span>
+      </button>
+      <button class="header-btn" onclick="App.togglePanel('settings')" title="Cài đặt">
+        <span>⚙️</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN LAYOUT: 3-PANEL ═══ -->
+  <div class="layout">
+    <!-- ═══ LEFT PANEL: CHAT + CONFIG ═══ -->
+    <aside class="panel-left" id="panelLeft">
+      <div class="panel-left-inner">
+        <!-- Agent Control -->
+        <div class="control-section">
+          <div class="section-header">
+            <span class="section-icon">🎯</span>
+            <span class="section-title">Agent Control</span>
+            <span id="agentBadge" class="agent-badge idle">Idle</span>
+          </div>
+
+          <!-- Chat area (scrollable) -->
+          <div class="chat-area" id="chatArea">
+            <div class="chat-welcome" id="chatWelcome">
+              <div class="chat-welcome-icon">🤖</div>
+              <p class="chat-welcome-text">
+                Xin chào! Tôi là <strong>QtusScreen AI Pro</strong>.<br>
+                Hãy cho tôi biết bạn muốn tôi làm gì trên máy tính.
+              </p>
+              <!-- Quick Actions -->
+              <div class="quick-actions" id="quickActions">
+                <button class="quick-btn" onclick="App.useTemplate('open_youtube')">
+                  <span>🎵</span> Mở YouTube
+                </button>
+                <button class="quick-btn" onclick="App.useTemplate('open_chrome_search')">
+                  <span>🔍</span> Tìm Google
+                </button>
+                <button class="quick-btn" onclick="App.useTemplate('open_notepad')">
+                  <span>📝</span> Mở Notepad
+                </button>
+                <button class="quick-btn" onclick="App.useTemplate('open_vscode')">
+                  <span>💻</span> VS Code
+                </button>
+              </div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+              <!-- Messages rendered here -->
+            </div>
+          </div>
+
+          <!-- Input -->
+          <div class="chat-input-wrap" id="chatInputWrap">
+            <div class="chat-input-container">
+              <textarea
+                id="chatInput"
+                class="chat-input"
+                placeholder="Nhập mục tiêu... (Ctrl+Enter để chạy)"
+                rows="2"
+              ></textarea>
+              <div class="chat-input-actions">
+                <button id="btnRun" class="btn-run" onclick="App.runAgent()" title="Chạy Agent (Ctrl+Enter)">
+                  <span class="btn-run-icon">🚀</span>
+                </button>
+                <button id="btnStop" class="btn-stop hidden" onclick="App.stopAgent()" title="Dừng (Esc)">
+                  <span>⏹</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Config (collapsible) -->
+        <details class="config-details" id="configSection">
+          <summary class="config-summary">
+            <span>⚙️ Cấu hình AI</span>
+            <span class="config-toggle">▼</span>
+          </summary>
+          <div class="config-body">
+            <div class="config-group">
+              <label class="config-label">🧠 Brain Provider</label>
+              <select id="brainProvider" class="config-select" onchange="App.onProviderChange()">
+                <option value="gemini">🔵 Gemini (Google)</option>
+                <option value="ollama">🦙 Ollama (Local)</option>
+                <option value="openai">🟢 OpenAI (GPT)</option>
+                <option value="anthropic">🟣 Claude</option>
+                <option value="groq">⚡ Groq (Fast)</option>
+                <option value="deepseek">🔶 DeepSeek</option>
+                <option value="aiml">🌐 AIML</option>
+              </select>
+            </div>
+            <div class="config-group">
+              <label class="config-label">🤖 Model</label>
+              <select id="brainModel" class="config-select">
+                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+              </select>
+            </div>
+            <div class="config-row">
+              <div class="config-group">
+                <label class="config-label">👁️ Eye</label>
+                <select id="eyeProvider" class="config-select">
+                  <option value="auto">🔄 Auto</option>
+                  <option value="gemini">🔵 Gemini</option>
+                  <option value="ollama">🦙 Ollama</option>
+                </select>
+              </div>
+              <div class="config-group">
+                <label class="config-label">🔢 Steps</label>
+                <select id="maxSteps" class="config-select">
+                  <option value="10">10</option>
+                  <option value="15" selected>15</option>
+                  <option value="20">20</option>
+                  <option value="30">30</option>
+                  <option value="50">50</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </aside>
+
+    <!-- ═══ CENTER: LIVE SCREEN + ACTIVITY ═══ -->
+    <main class="panel-center" id="panelCenter">
+      <!-- Agent Status Bar -->
+      <div class="status-bar" id="statusBar">
+        <div class="status-bar-left">
+          <div id="agentState" class="agent-state">
+            <span class="agent-state-icon" id="agentStateIcon">💤</span>
+            <span id="agentStateText">Sẵn sàng</span>
+          </div>
+          <div id="agentProgress" class="agent-progress hidden">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            <span id="progressText" class="progress-text">0/0</span>
+          </div>
+        </div>
+        <div class="status-bar-right">
+          <span id="providerBadge" class="provider-badge"></span>
+          <span id="stepTimer" class="step-timer"></span>
+        </div>
+      </div>
+
+      <!-- Live Screen Mirror -->
+      <div class="screen-mirror" id="screenMirror">
+        <div class="screen-mirror-overlay" id="screenOverlay">
+          <div class="screen-placeholder">
+            <div class="screen-placeholder-icon">📸</div>
+            <p>Chạy Agent để xem màn hình trực tiếp</p>
+            <button class="btn-capture" onclick="App.captureScreen()">Chụp màn hình</button>
+          </div>
+        </div>
+        <img id="screenImage" src="" alt="Live screen" class="screen-img hidden">
+        <!-- Click indicator overlay -->
+        <div class="click-indicator" id="clickIndicator"></div>
+      </div>
+
+      <!-- Sub-tasks progress -->
+      <div class="subtasks-bar" id="subtasksBar" style="display:none;">
+        <div class="subtasks-list" id="subtasksList"></div>
+      </div>
+    </main>
+
+    <!-- ═══ RIGHT PANEL: ACTIVITY FEED ═══ -->
+    <aside class="panel-right" id="panelRight">
+      <div class="panel-right-tabs">
+        <button class="pr-tab active" data-tab="activity" onclick="App.switchRightTab('activity')">
+          📋 Activity
+        </button>
+        <button class="pr-tab" data-tab="system" onclick="App.switchRightTab('system')">
+          📊 System
+        </button>
+        <button class="pr-tab" data-tab="settings" onclick="App.switchRightTab('settings')">
+          🔑 Keys
+        </button>
+      </div>
+
+      <!-- Activity Feed -->
+      <div class="pr-content active" id="tabActivity">
+        <div class="activity-header">
+          <span>Hoạt động</span>
+          <button class="btn-clear" onclick="App.clearLogs()">🧹</button>
+        </div>
+        <div class="activity-feed" id="activityFeed">
+          <div class="activity-empty" id="activityEmpty">
+            <span>💤</span>
+            <p>Chưa có hoạt động</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- System Info -->
+      <div class="pr-content" id="tabSystem">
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">CPU</div>
+            <div class="metric-value" id="metricCpu">—</div>
+            <div class="metric-bar"><div class="metric-bar-fill" id="cpuBar" style="width:0%"></div></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">RAM</div>
+            <div class="metric-value" id="metricRam">—</div>
+            <div class="metric-bar"><div class="metric-bar-fill ram" id="ramBar" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-title">📊 Thống kê phiên</div>
+          <div class="stats-row"><span>Bước</span><span id="statSteps">0</span></div>
+          <div class="stats-row"><span>Actions</span><span id="statActions">0</span></div>
+          <div class="stats-row"><span>Thành công</span><span id="statSuccess">0%</span></div>
+          <div class="stats-row"><span>Thời gian</span><span id="statTime">0s</span></div>
+          <div class="stats-row"><span>Provider switches</span><span id="statSwitches">0</span></div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-title">💻 Hệ thống</div>
+          <div id="systemInfo">
+            <div class="stats-row"><span>Đang tải...</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- API Keys -->
+      <div class="pr-content" id="tabSettings">
+        <div class="stats-card">
+          <div class="stats-title">🔑 API Keys</div>
+          <div id="apiKeysStatus">
+            <div class="stats-row"><span>Đang tải...</span></div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-title">🦙 Ollama Models</div>
+          <div id="ollamaModels">
+            <div class="stats-row"><span>Đang tải...</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="/static/js/websocket.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

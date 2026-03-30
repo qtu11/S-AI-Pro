@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════════════════════════
+# QtusScreen AI Pro v4.0 — Dependencies
+# Bản quyền © 2025-2026 Qtus Dev (Anh Tú)
+# Cài đặt: pip install -r requirements.txt
+# Hoặc: python auto_setup.py (tự động cài mọi thứ)
+# ═══════════════════════════════════════════════════════════
+
+# --- Core AI (bắt buộc) ---
+google-genai>=0.8.0
+Pillow>=10.4.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+
+# --- AI Providers ---
+openai>=1.50.0              # GPT-4o, GPT-4o-mini, o1...
+anthropic>=0.40.0           # Claude 3.5 Sonnet, Haiku...
+# groq — dùng requests trực tiếp (không cần package riêng)
+# deepseek — dùng requests trực tiếp (OpenAI-compatible API)
+# ollama — dùng requests trực tiếp
+
+# --- GUI Legacy ---
+customtkinter>=5.2.2
+
+# --- Screen Capture & Automation ---
+mss>=10.0.0
+pyautogui>=0.9.54
+pyperclip>=1.8.2
+
+# --- API Server + WebSocket ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.12
+websockets>=12.0
+
+# --- Audio & Speech (tùy chọn) ---
+sounddevice>=0.4.6
+soundfile>=0.12.1
+SpeechRecognition>=3.10.0
+
+# --- OCR ---
+easyocr>=1.7.1
+
+# --- Hotkey ---
+keyboard>=0.13.5
+
+# --- Offline Vision Models (tùy chọn, nặng ~4GB) ---
+# torch>=2.0.0
+# transformers>=4.40.0
+# accelerate>=0.30.0
+# einops>=0.8.0
+# huggingface-hub>=0.20.0
