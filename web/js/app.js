@@ -1,6 +1,7 @@
 /**
- * QtusScreen AI Pro v5.0 — Dashboard App
- * Premium UI with Chat, Live Screen, Activity Feed.
+ * S-AI-Pro v6.0 — Dashboard App
+ * Premium UI: Chat, Live Screen, Activity Feed, Thinking Panel.
+ * 5-Layer Cognitive Architecture Dashboard Controller.
  * Copyright © 2025-2026 Qtus Dev (Anh Tú)
  */
 
@@ -16,10 +17,11 @@ const App = (() => {
     theme: localStorage.getItem('theme') || 'dark',
     logs: [],
     chatMessages: [],
-    stats: { steps: 0, actions: 0, success: 0, time: 0, switches: 0 },
+    thinkingItems: [],
+    subTasks: [],
+    stats: { steps: 0, actions: 0, success: 0, time: 0, switches: 0, verifyRate: 0 },
     startTime: 0,
     timerInterval: null,
-    screenAutoCapture: null,
   };
 
   // ═══ INIT ═══
@@ -29,7 +31,8 @@ const App = (() => {
     setupKeyboard();
     setupTextareaAutoResize();
     fetchModels();
-    console.log('🤖 QtusScreen AI Pro v5.0 initialized');
+    fetchDbStatus();
+    console.log('🤖 S-AI-Pro v6.0 — Dashboard initialized');
   }
 
   // ═══ WEBSOCKET ═══
@@ -54,7 +57,6 @@ const App = (() => {
 
     wsClient.on('agent_log', (data) => {
       addActivityItem(data.event, data.message, data.step);
-      // Also add to chat if relevant
       if (['done', 'error'].includes(data.event)) {
         addChatMessage('agent', data.message);
       }
@@ -76,6 +78,7 @@ const App = (() => {
 
     wsClient.on('agent_complete', (data) => {
       state.agentRunning = false;
+      state.agentPaused = false;
       stopTimer();
       updateAgentUI(false);
       state.stats.time = data.duration || 0;
@@ -88,7 +91,12 @@ const App = (() => {
     });
 
     wsClient.on('agent_thinking', (data) => {
-      // Could display thought bubble in UI
+      addThinkingItem('thought', data.thought || '');
+      if (data.plan) addThinkingItem('plan', data.plan);
+    });
+
+    wsClient.on('subtask_update', (data) => {
+      updateSubTask(data);
     });
 
     wsClient.on('system_metrics', (data) => {
@@ -113,24 +121,32 @@ const App = (() => {
       return;
     }
 
-    // Reset stats
-    state.stats = { steps: 0, actions: 0, success: 0, time: 0, switches: 0 };
+    // Reset
+    state.stats = { steps: 0, actions: 0, success: 0, time: 0, switches: 0, verifyRate: 0 };
     state.currentGoal = goal;
+    state.subTasks = [];
+    state.thinkingItems = [];
 
-    // Add user message to chat
     addChatMessage('user', goal);
     input.value = '';
     autoResizeTextarea(input);
 
-    // Hide welcome, show activity
     const welcome = document.getElementById('chatWelcome');
     if (welcome) welcome.style.display = 'none';
 
-    // Send to agent
+    // Reset subtask bar
+    const subtasksBar = document.getElementById('subtasksBar');
+    if (subtasksBar) subtasksBar.style.display = 'none';
+
+    // Clear thinking
+    clearThinking();
+
     const provider = document.getElementById('brainProvider').value;
     const brainModel = document.getElementById('brainModel').value;
     const eyeProvider = document.getElementById('eyeProvider').value;
     const maxSteps = parseInt(document.getElementById('maxSteps').value) || 15;
+    const decompose = document.getElementById('enableDecompose')?.value !== 'false';
+    const deepThink = document.getElementById('enableDeepThink')?.value === 'true';
 
     wsClient.send({
       type: 'agent_start',
@@ -140,20 +156,46 @@ const App = (() => {
       eye_provider: eyeProvider,
       max_steps: maxSteps,
       step_delay: 0.5,
+      decompose: decompose,
+      deep_think: deepThink,
     });
 
     state.agentRunning = true;
+    state.agentPaused = false;
     updateAgentUI(true);
     startTimer();
-    addChatMessage('system', `🚀 Agent khởi chạy — ${provider}/${brainModel}`);
+    addChatMessage('system', `🚀 Agent v6.0 khởi chạy — ${provider}/${brainModel}`);
+    if (decompose) addChatMessage('system', '📊 Task Decomposition: BẬT');
+    if (deepThink) addChatMessage('system', '🧠 Deep Thinking: BẬT');
   }
 
   function stopAgent() {
     wsClient.send({ type: 'agent_stop' });
     state.agentRunning = false;
+    state.agentPaused = false;
     stopTimer();
     updateAgentUI(false);
     addChatMessage('system', '⛔ Agent đã dừng');
+  }
+
+  function pauseAgent() {
+    if (!state.agentRunning) return;
+
+    if (state.agentPaused) {
+      wsClient.send({ type: 'agent_resume' });
+      state.agentPaused = false;
+      updateAgentUI(true);
+      addChatMessage('system', '▶️ Agent tiếp tục');
+    } else {
+      wsClient.send({ type: 'agent_pause' });
+      state.agentPaused = true;
+      const badge = document.getElementById('agentBadge');
+      badge.className = 'agent-badge paused';
+      badge.textContent = 'Paused';
+      const btnPause = document.getElementById('btnPause');
+      if (btnPause) btnPause.innerHTML = '<span>▶️</span>';
+      addChatMessage('system', '⏸️ Agent tạm dừng');
+    }
   }
 
   function captureScreen() {
@@ -176,16 +218,22 @@ const App = (() => {
   function updateAgentUI(running) {
     const btnRun = document.getElementById('btnRun');
     const btnStop = document.getElementById('btnStop');
+    const btnPause = document.getElementById('btnPause');
     const badge = document.getElementById('agentBadge');
 
     if (running) {
       btnRun.classList.add('hidden');
       btnStop.classList.remove('hidden');
+      if (btnPause) {
+        btnPause.classList.remove('hidden');
+        btnPause.innerHTML = '<span>⏸</span>';
+      }
       badge.className = 'agent-badge running';
       badge.textContent = 'Running';
     } else {
       btnRun.classList.remove('hidden');
       btnStop.classList.add('hidden');
+      if (btnPause) btnPause.classList.add('hidden');
       badge.className = 'agent-badge idle';
       badge.textContent = 'Idle';
     }
@@ -222,7 +270,6 @@ const App = (() => {
       showToast(goal, 'warning');
     }
 
-    // Progress bar
     if (maxSteps > 0) {
       progress.classList.remove('hidden');
       const pct = Math.round((step / maxSteps) * 100);
@@ -230,7 +277,6 @@ const App = (() => {
       progressText.textContent = `${step}/${maxSteps}`;
     }
 
-    // Badge
     if (['thinking', 'seeing'].includes(status)) {
       badge.className = 'agent-badge thinking';
       badge.textContent = 'Thinking';
@@ -259,10 +305,8 @@ const App = (() => {
     msg.className = `chat-msg ${role}`;
     msg.textContent = text;
     container.appendChild(msg);
-    // Auto-scroll
     const chatArea = document.getElementById('chatArea');
     chatArea.scrollTop = chatArea.scrollHeight;
-
     state.chatMessages.push({ role, text, time: Date.now() });
   }
 
@@ -283,7 +327,6 @@ const App = (() => {
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-    // Truncate long messages
     const shortMsg = message.length > 200 ? message.substring(0, 200) + '...' : message;
 
     item.innerHTML = `
@@ -296,14 +339,11 @@ const App = (() => {
 
     feed.appendChild(item);
 
-    // Keep max 200 items
-    while (feed.children.length > 200) {
+    while (feed.children.length > 300) {
       feed.removeChild(feed.firstChild);
     }
 
-    // Auto-scroll
     feed.scrollTop = feed.scrollHeight;
-
     state.logs.push({ event, message, step, time: Date.now() });
   }
 
@@ -311,6 +351,91 @@ const App = (() => {
     const feed = document.getElementById('activityFeed');
     feed.innerHTML = `<div class="activity-empty" id="activityEmpty"><span>💤</span><p>Đã xoá</p></div>`;
     state.logs = [];
+  }
+
+  // ═══ THINKING PANEL (NEW) ═══
+  function addThinkingItem(type, text) {
+    if (!text || text.trim().length === 0) return;
+
+    const feed = document.getElementById('thinkingFeed');
+    const empty = document.getElementById('thinkingEmpty');
+    if (empty) empty.style.display = 'none';
+
+    const item = document.createElement('div');
+    item.className = 'thinking-item';
+
+    const labels = {
+      thought: '💭 Suy nghĩ',
+      plan: '📋 Kế hoạch',
+      reasoning: '🧠 Lý luận',
+      check: '🔎 Kiểm tra',
+    };
+
+    const shortText = text.length > 500 ? text.substring(0, 500) + '...' : text;
+
+    item.innerHTML = `
+      <div class="thinking-label">${labels[type] || '💭 ' + type}</div>
+      <div class="thinking-text">${escapeHtml(shortText)}</div>
+    `;
+
+    feed.appendChild(item);
+
+    while (feed.children.length > 50) {
+      feed.removeChild(feed.firstChild);
+    }
+
+    feed.scrollTop = feed.scrollHeight;
+    state.thinkingItems.push({ type, text, time: Date.now() });
+  }
+
+  function clearThinking() {
+    const feed = document.getElementById('thinkingFeed');
+    if (feed) {
+      feed.innerHTML = `<div class="activity-empty" id="thinkingEmpty"><span>🧠</span><p>Agent chưa suy nghĩ</p></div>`;
+    }
+    state.thinkingItems = [];
+  }
+
+  // ═══ SUBTASKS (NEW) ═══
+  function updateSubTask(data) {
+    const bar = document.getElementById('subtasksBar');
+    const list = document.getElementById('subtasksList');
+    const progressText = document.getElementById('subtasksProgressText');
+
+    if (!bar || !list) return;
+
+    bar.style.display = 'block';
+
+    // Update or add subtask
+    let existing = list.querySelector(`[data-subtask-id="${data.id}"]`);
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.className = 'subtask-item';
+      existing.setAttribute('data-subtask-id', data.id);
+      list.appendChild(existing);
+    }
+
+    const icons = {
+      pending: '⬜', running: '🔵', done: '✅', failed: '❌', skipped: '⏭️',
+    };
+
+    existing.className = `subtask-item ${data.status}`;
+    existing.innerHTML = `
+      <span class="subtask-icon">${icons[data.status] || '⬜'}</span>
+      <span>${data.id}. ${escapeHtml(data.desc || '')}</span>
+    `;
+
+    // Update in state
+    const idx = state.subTasks.findIndex(s => s.id === data.id);
+    if (idx >= 0) {
+      state.subTasks[idx] = data;
+    } else {
+      state.subTasks.push(data);
+    }
+
+    // Update progress text
+    const done = state.subTasks.filter(s => s.status === 'done').length;
+    if (progressText) progressText.textContent = `${done}/${state.subTasks.length}`;
   }
 
   // ═══ STATS ═══
@@ -375,6 +500,16 @@ const App = (() => {
     }
   }
 
+  async function fetchDbStatus() {
+    try {
+      const resp = await fetch('/api/health');
+      const data = await resp.json();
+      setText('dbStatus', data.db_status || '—');
+    } catch (e) {
+      setText('dbStatus', 'error');
+    }
+  }
+
   // ═══ API KEYS ═══
   function updateApiKeys(keys) {
     const container = document.getElementById('apiKeysStatus');
@@ -387,9 +522,52 @@ const App = (() => {
       const active = keys[key];
       return `<div class="stats-row">
         <span>${label}</span>
-        <span class="key-status"><span class="key-dot ${active ? 'active' : 'inactive'}"></span> ${active ? 'OK' : '—'}</span>
+        <span style="color:${active ? 'var(--success)' : 'var(--text-tertiary)'}">${active ? '✅ OK' : '—'}</span>
       </div>`;
     }).join('');
+
+    // Fetch Ollama models
+    fetchOllamaModels();
+    fetchModelPerformance();
+  }
+
+  async function fetchOllamaModels() {
+    try {
+      const resp = await fetch('/api/ollama/models');
+      const data = await resp.json();
+      const container = document.getElementById('ollamaModels');
+      if (!container) return;
+      if (data.models && data.models.length) {
+        container.innerHTML = data.models.map(m =>
+          `<div class="stats-row"><span>🦙 ${m}</span><span style="color:var(--success)">✅</span></div>`
+        ).join('');
+      } else {
+        container.innerHTML = '<div class="stats-row"><span>Không có model</span></div>';
+      }
+    } catch (e) {
+      // Silent
+    }
+  }
+
+  async function fetchModelPerformance() {
+    try {
+      const resp = await fetch('/api/models/performance');
+      const data = await resp.json();
+      const container = document.getElementById('modelPerformance');
+      if (!container) return;
+      if (data.models && data.models.length) {
+        container.innerHTML = data.models.map(m =>
+          `<div class="stats-row">
+            <span>${m.provider}/${m.model_name}</span>
+            <span>${m.total_calls} calls</span>
+          </div>`
+        ).join('');
+      } else {
+        container.innerHTML = '<div class="stats-row"><span>Chưa có dữ liệu</span></div>';
+      }
+    } catch (e) {
+      // Silent
+    }
   }
 
   function updateSystemInfo(data) {
@@ -398,9 +576,9 @@ const App = (() => {
     container.innerHTML = `
       <div class="stats-row"><span>Python</span><span>${data.python || '—'}</span></div>
       <div class="stats-row"><span>Platform</span><span>${data.platform || '—'}</span></div>
+      <div class="stats-row"><span>Architecture</span><span>5-Layer Cognitive</span></div>
     `;
 
-    // Also update provider badge
     const providerBadge = document.getElementById('providerBadge');
     const provider = document.getElementById('brainProvider').value;
     providerBadge.textContent = provider;
@@ -418,7 +596,6 @@ const App = (() => {
     const input = document.getElementById('chatInput');
     input.value = text;
     input.focus();
-    // Place cursor at end
     input.setSelectionRange(text.length, text.length);
     autoResizeTextarea(input);
   }
@@ -449,29 +626,16 @@ const App = (() => {
   }
 
   function togglePanel(name) {
-    if (name === 'settings') {
-      switchRightTab('settings');
-    }
+    if (name === 'settings') switchRightTab('settings');
   }
 
   // ═══ KEYBOARD ═══
   function setupKeyboard() {
     document.addEventListener('keydown', (e) => {
-      // Ctrl+Enter → Run agent
-      if (e.ctrlKey && e.key === 'Enter') {
-        e.preventDefault();
-        runAgent();
-      }
-      // Escape → Stop agent
-      if (e.key === 'Escape' && state.agentRunning) {
-        e.preventDefault();
-        stopAgent();
-      }
-      // F5 → Capture
-      if (e.key === 'F5') {
-        e.preventDefault();
-        captureScreen();
-      }
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runAgent(); }
+      if (e.key === 'Escape' && state.agentRunning) { e.preventDefault(); stopAgent(); }
+      if (e.key === 'F5') { e.preventDefault(); captureScreen(); }
+      if (e.key === 'F6') { e.preventDefault(); pauseAgent(); }
     });
   }
 
@@ -533,8 +697,10 @@ const App = (() => {
   return {
     runAgent,
     stopAgent,
+    pauseAgent,
     captureScreen,
     clearLogs,
+    clearThinking,
     onProviderChange,
     toggleTheme,
     switchRightTab,

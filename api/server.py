@@ -1,6 +1,7 @@
 """
-QtusScreen AI Pro v5.0 — FastAPI Server + WebSocket + Web Dashboard.
+S-AI-Pro v6.0 — FastAPI Server + WebSocket + Web Dashboard.
 + System metrics, templates, pause/resume, provider switch.
++ Task DB, Pydantic validation, enhanced endpoints.
 Copyright © 2025-2026 Qtus Dev (Anh Tú)
 """
 import os
@@ -59,16 +60,22 @@ async def startup():
     event_bridge.set_loop(loop)
     asyncio.create_task(event_bridge.process_queue())
 
-    # Start system monitor
+    # Init SQLite DB
+    try:
+        from database.schema import init_db
+        init_db()
+    except Exception as e:
+        print(f"[DB] Init warning: {e}")
+
     system_monitor.start(interval=3.0)
 
-    # Start metrics broadcast
     global _metrics_task
     _metrics_task = asyncio.create_task(_broadcast_metrics())
 
     print(f"🤖 {APP_NAME} v{APP_VERSION} — Server started")
     print(f"🌐 Dashboard: http://localhost:8000")
     print(f"📡 API Docs:  http://localhost:8000/docs")
+    print(f"💾 Database:  SQLite initialized")
 
 
 @app.on_event("shutdown")
@@ -83,7 +90,6 @@ async def shutdown():
 
 
 async def _broadcast_metrics():
-    """Broadcast system metrics every 5s."""
     while True:
         try:
             await asyncio.sleep(5)
@@ -188,6 +194,8 @@ async def _start_agent_from_ws(msg: dict):
     eye_model = msg.get("eye_model", "")
     max_steps = int(msg.get("max_steps", 15))
     step_delay = float(msg.get("step_delay", 0.5))
+    enable_decomposition = msg.get("decompose", True)
+    enable_deep_thinking = msg.get("deep_think", False)
 
     task = task_manager.create_task(
         goal=goal, provider=provider,
@@ -203,7 +211,6 @@ async def _start_agent_from_ws(msg: dict):
         "status": "running",
     })
 
-    # Use new AgentOrchestrator v5.0
     from agent.orchestrator import AgentOrchestrator
 
     _agent_instance = AgentOrchestrator(
@@ -214,6 +221,8 @@ async def _start_agent_from_ws(msg: dict):
         max_steps=max_steps,
         step_delay=step_delay,
         event_bridge=event_bridge,
+        enable_decomposition=enable_decomposition,
+        enable_deep_thinking=enable_deep_thinking,
     )
     _agent_instance.run(goal, blocking=False)
 
@@ -239,12 +248,22 @@ async def _capture_and_send():
 @app.get("/api/health")
 def health():
     from config import validate_keys
+    db_status = "ok"
+    try:
+        from database.schema import get_connection
+        conn = get_connection()
+        conn.execute("SELECT 1")
+        conn.close()
+    except Exception:
+        db_status = "error"
+
     return {
         "status": "ok",
         "version": APP_VERSION,
         "keys": validate_keys(),
         "agent_running": _agent_instance.is_running if _agent_instance else False,
         "ws_clients": ws_manager.count,
+        "db_status": db_status,
     }
 
 
@@ -263,9 +282,39 @@ def ollama_models():
         return {"models": PROVIDER_MODELS.get("ollama", [])}
 
 
+# ─── Task endpoints ────────────────────────────────────────
+
 @app.get("/api/tasks")
 def list_tasks(limit: int = 50):
-    return {"tasks": task_manager.get_history(limit)}
+    try:
+        from database.repository import TaskRepository
+        tasks = TaskRepository.list_recent(limit)
+        return {"tasks": tasks}
+    except Exception:
+        return {"tasks": task_manager.get_history(limit)}
+
+
+@app.get("/api/tasks/{task_id}")
+def get_task(task_id: str):
+    try:
+        from database.repository import TaskRepository, StepRepository
+        task = TaskRepository.get(task_id)
+        if not task:
+            return JSONResponse(status_code=404, content={"error": "Task not found"})
+        steps = StepRepository.get_steps_for_task(task_id)
+        return {"task": task, "steps": steps}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/tasks/{task_id}/steps")
+def get_task_steps(task_id: str, last_n: int = 20):
+    try:
+        from database.repository import StepRepository
+        steps = StepRepository.get_last_n_steps(task_id, last_n)
+        return {"steps": steps}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.get("/api/screenshot.png")
@@ -322,10 +371,13 @@ async def agent_start(
     provider: str = Form("gemini"),
     brain_model: str = Form(""),
     max_steps: int = Form(15),
+    decompose: bool = Form(True),
+    deep_think: bool = Form(False),
 ):
     await _start_agent_from_ws({
         "goal": goal, "provider": provider,
         "brain_model": brain_model, "max_steps": max_steps,
+        "decompose": decompose, "deep_think": deep_think,
     })
     return {"status": "started", "goal": goal}
 
@@ -403,7 +455,7 @@ def delete_template(template_id: str):
     return {"deleted": ok}
 
 
-# ─── Memory API ─────────────────────────────────────────────
+# ─── Memory & Learning API ─────────────────────────────────
 
 @app.get("/api/memory/patterns")
 def get_patterns():
@@ -418,6 +470,35 @@ def clear_memory():
         _agent_instance.memory.reset()
         return {"status": "cleared"}
     return {"status": "no_agent"}
+
+
+@app.get("/api/learning/insights")
+def get_learning_insights():
+    if _agent_instance:
+        return {"insights": _agent_instance.learner.get_insights_summary()}
+    return {"insights": {}}
+
+
+@app.get("/api/models/performance")
+def get_model_performance():
+    try:
+        from database.repository import ModelCacheRepository
+        stats = ModelCacheRepository.get_all_stats()
+        return {"models": stats}
+    except Exception:
+        return {"models": []}
+
+
+# ─── Logs API ───────────────────────────────────────────────
+
+@app.get("/api/logs")
+def get_logs(task_id: str = "", level: str = "", limit: int = 100):
+    try:
+        from database.repository import LogRepository
+        logs = LogRepository.get_logs(task_id=task_id, level=level, limit=limit)
+        return {"logs": logs}
+    except Exception:
+        return {"logs": []}
 
 
 # ─── Legacy Compat ──────────────────────────────────────────

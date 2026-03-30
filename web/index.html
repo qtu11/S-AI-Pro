@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="QtusScreen AI Pro v5.0 — Professional AI Computer Agent Dashboard">
-  <title>QtusScreen AI Pro v5.0</title>
+  <meta name="description" content="S-AI-Pro v6.0 — Professional Autonomous Computer Agent Dashboard">
+  <title>S-AI-Pro v6.0 — Autonomous Agent</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -22,8 +22,8 @@
           <span class="header-logo-pulse"></span>
         </div>
         <div class="header-title-group">
-          <span class="header-title">QtusScreen AI Pro</span>
-          <span class="header-version">v5.0</span>
+          <span class="header-title">S-AI-Pro</span>
+          <span class="header-version">v6.0</span>
         </div>
       </div>
     </div>
@@ -64,8 +64,9 @@
             <div class="chat-welcome" id="chatWelcome">
               <div class="chat-welcome-icon">🤖</div>
               <p class="chat-welcome-text">
-                Xin chào! Tôi là <strong>QtusScreen AI Pro</strong>.<br>
-                Hãy cho tôi biết bạn muốn tôi làm gì trên máy tính.
+                Xin chào! Tôi là <strong>S-AI-Pro v6.0</strong>.<br>
+                AI Agent tự động — Observe → Think → Act → Verify.<br>
+                Hãy cho tôi mục tiêu để bắt đầu.
               </p>
               <!-- Quick Actions -->
               <div class="quick-actions" id="quickActions">
@@ -98,6 +99,9 @@
                 rows="2"
               ></textarea>
               <div class="chat-input-actions">
+                <button id="btnPause" class="btn-pause hidden" onclick="App.pauseAgent()" title="Tạm dừng">
+                  <span>⏸</span>
+                </button>
                 <button id="btnRun" class="btn-run" onclick="App.runAgent()" title="Chạy Agent (Ctrl+Enter)">
                   <span class="btn-run-icon">🚀</span>
                 </button>
@@ -155,6 +159,22 @@
                 </select>
               </div>
             </div>
+            <div class="config-row">
+              <div class="config-group">
+                <label class="config-label">🧩 Task Decompose</label>
+                <select id="enableDecompose" class="config-select">
+                  <option value="true" selected>✅ Bật</option>
+                  <option value="false">❌ Tắt</option>
+                </select>
+              </div>
+              <div class="config-group">
+                <label class="config-label">🧠 Deep Think</label>
+                <select id="enableDeepThink" class="config-select">
+                  <option value="false" selected>❌ Tắt</option>
+                  <option value="true">✅ Bật</option>
+                </select>
+              </div>
+            </div>
           </div>
         </details>
       </div>
@@ -192,12 +212,15 @@
           </div>
         </div>
         <img id="screenImage" src="" alt="Live screen" class="screen-img hidden">
-        <!-- Click indicator overlay -->
         <div class="click-indicator" id="clickIndicator"></div>
       </div>
 
       <!-- Sub-tasks progress -->
       <div class="subtasks-bar" id="subtasksBar" style="display:none;">
+        <div class="subtasks-header">
+          <span class="subtasks-title">📋 Sub-tasks</span>
+          <span class="subtasks-progress" id="subtasksProgressText">0/0</span>
+        </div>
         <div class="subtasks-list" id="subtasksList"></div>
       </div>
     </main>
@@ -207,6 +230,9 @@
       <div class="panel-right-tabs">
         <button class="pr-tab active" data-tab="activity" onclick="App.switchRightTab('activity')">
           📋 Activity
+        </button>
+        <button class="pr-tab" data-tab="thinking" onclick="App.switchRightTab('thinking')">
+          🧠 Thinking
         </button>
         <button class="pr-tab" data-tab="system" onclick="App.switchRightTab('system')">
           📊 System
@@ -226,6 +252,20 @@
           <div class="activity-empty" id="activityEmpty">
             <span>💤</span>
             <p>Chưa có hoạt động</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Thinking Panel (NEW) -->
+      <div class="pr-content" id="tabThinking">
+        <div class="activity-header">
+          <span>Internal Monologue</span>
+          <button class="btn-clear" onclick="App.clearThinking()">🧹</button>
+        </div>
+        <div class="thinking-feed" id="thinkingFeed">
+          <div class="activity-empty" id="thinkingEmpty">
+            <span>🧠</span>
+            <p>Agent chưa suy nghĩ</p>
           </div>
         </div>
       </div>
@@ -251,11 +291,18 @@
           <div class="stats-row"><span>Thành công</span><span id="statSuccess">0%</span></div>
           <div class="stats-row"><span>Thời gian</span><span id="statTime">0s</span></div>
           <div class="stats-row"><span>Provider switches</span><span id="statSwitches">0</span></div>
+          <div class="stats-row"><span>Verification</span><span id="statVerify">—</span></div>
         </div>
         <div class="stats-card">
           <div class="stats-title">💻 Hệ thống</div>
           <div id="systemInfo">
             <div class="stats-row"><span>Đang tải...</span></div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-title">💾 Database</div>
+          <div id="dbInfo">
+            <div class="stats-row"><span>SQLite</span><span id="dbStatus">—</span></div>
           </div>
         </div>
       </div>
@@ -272,6 +319,12 @@
           <div class="stats-title">🦙 Ollama Models</div>
           <div id="ollamaModels">
             <div class="stats-row"><span>Đang tải...</span></div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-title">📈 Model Performance</div>
+          <div id="modelPerformance">
+            <div class="stats-row"><span>Chưa có dữ liệu</span></div>
           </div>
         </div>
       </div>
